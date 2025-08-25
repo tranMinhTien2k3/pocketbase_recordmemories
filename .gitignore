@@ -1,0 +1,5 @@
+note.txt
+pb_data/
+*.db
+.env
+node_modules
