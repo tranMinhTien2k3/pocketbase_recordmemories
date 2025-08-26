@@ -4,7 +4,7 @@ FROM alpine:latest
 RUN apk add --no-cache ca-certificates wget unzip && update-ca-certificates
 
 # Download PocketBase (version mới nhất)
-RUN wget -O pocketbase.zip https://github.com/pocketbase/pocketbase/releases/download/v0.22.0/pocketbase_0.22.0_linux_amd64.zip
+RUN wget -O pocketbase.zip https://github.com/pocketbase/pocketbase/releases/download/v0.29.3/pocketbase_0.22.0_linux_amd64.zip
 
 # Giải nén và set permissions
 RUN unzip pocketbase.zip && chmod +x pocketbase
