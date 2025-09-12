@@ -2094,7 +2094,7 @@ migrate((app) => {
     ]
 
     try {
-        app.dao().importCollections(collections, false)
+        app.importCollections(collections, false)
         console.log("✅ Collections imported successfully")
     } catch (e) {
         console.error("Failed to import collections:", e)
@@ -2123,9 +2123,9 @@ migrate((app) => {
     ]
     ids.forEach((cid) => {
         try {
-            const c = app.dao().findCollectionByNameOrId(cid)
+            const c = app.findCollectionByNameOrId(cid)
             if (c) {
-                app.dao().deleteCollection(c)
+                app.delete(c)
             }
         } catch (e) {
             console.warn("Skip delete collection", cid, e?.message || e)

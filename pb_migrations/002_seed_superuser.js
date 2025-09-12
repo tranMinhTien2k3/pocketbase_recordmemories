@@ -2,8 +2,8 @@
 
 migrate((app) => {
     // Create a default superuser so you can log into the admin UI immediately
-    const email = "Memory@tientm.app";
-    const password = "tranMinhTien2k3"; // change after first login
+    const email = "admin@local";
+    const password = "Admin123!"; // change after first login
 
     function generateAlphaNum(length) {
         const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -19,7 +19,7 @@ migrate((app) => {
 
         // Skip if already exists
         try {
-            const existing = app.dao().findFirstRecordByData(collection.id, "email", email);
+            const existing = app.findFirstRecordByData(collection.id, "email", email);
             if (existing) {
                 console.log("Default superuser already exists, skipping seeding.");
                 return;
@@ -47,9 +47,9 @@ migrate((app) => {
     const email = "admin@local";
     try {
         const collection = app.findCollectionByNameOrId("_superusers");
-        const rec = app.dao().findFirstRecordByData(collection.id, "email", email);
+        const rec = app.findFirstRecordByData(collection.id, "email", email);
         if (rec) {
-            app.dao().deleteRecord(rec);
+            app.delete(rec);
             console.log("✅ Default superuser removed:", email);
         }
     } catch (e) {
