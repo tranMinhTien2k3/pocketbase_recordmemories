@@ -125,6 +125,25 @@ routerAdd("GET", "/api/map/hotspots", (c) => {
 })
 
 // =============================================================================
+// CACHE MANAGEMENT API
+// =============================================================================
+
+routerAdd("POST", "/api/cache/clear", (c) => {
+    const authRecord = c.get("authRecord")
+    if (!authRecord) {
+        throw new BadRequestError("Authentication required")
+    }
+    
+    const pattern = c.queryParam("pattern")
+    clearCache(pattern)
+    
+    return c.json(200, {
+        message: pattern ? `Cache cleared for pattern: ${pattern}` : "All cache cleared",
+        timestamp: new Date().toISOString()
+    })
+})
+
+// =============================================================================
 // CORE FUNCTIONS
 // =============================================================================
 
@@ -244,7 +263,7 @@ function getSortedStories(userId, sortType, lat, lng, limit, offset) {
     }
     
     baseQuery += ` LIMIT ? OFFSET ?`
-    params.push(limit + 5, offset) // Lấy thêm một chút để tránh thiếu
+    params.push(limit + 5, offset)
     
     const records = $app.dao().db()
         .newQuery(baseQuery)
@@ -360,11 +379,13 @@ function enhanceStoryRecord(record) {
     let media = null
     let location = null
     let tags = null
+    let audioFiles = null
     
     try {
         if (record.media) media = JSON.parse(record.media)
         if (record.location) location = JSON.parse(record.location)
         if (record.tags) tags = JSON.parse(record.tags)
+        if (record.audio_files) audioFiles = JSON.parse(record.audio_files)
     } catch (e) {
         console.warn("JSON parse error:", e)
     }
@@ -382,7 +403,7 @@ function enhanceStoryRecord(record) {
         title: record.title,
         content: record.content,
         media: media,
-        audio_files: record.audio_files ? JSON.parse(record.audio_files) : null,
+        audio_files: audioFiles,
         location: location,
         tags: tags,
         privacy: record.privacy,
@@ -691,25 +712,6 @@ function clearCache(pattern = null) {
         cache.timeouts.clear()
     }
 }
-
-// =============================================================================
-// CACHE INVALIDATION HOOKS
-// =============================================================================
-
-onRecordAfterCreateRequest((e) => {
-    clearCache("sorted_")
-    clearCache("hotspots_")
-}, "story_likes", "journey_likes", "comments", "shares", "saves")
-
-onRecordAfterDeleteRequest((e) => {
-    clearCache("sorted_")
-    clearCache("hotspots_")
-}, "story_likes", "journey_likes", "comments", "shares", "saves")
-
-onRecordAfterUpdateRequest((e) => {
-    clearCache("sorted_")
-    clearCache("hotspots_")
-}, "stories", "journeys")
 
 // =============================================================================
 // HEALTH CHECK
