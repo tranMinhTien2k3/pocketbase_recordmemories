@@ -1,30 +1,32 @@
-migrate((db) => {
+/// <reference path="../pb_data/types.d.ts" />
+
+migrate((app) => {
     console.log("Creating sorting indexes...")
 
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_stories_sorting_basic ON stories (privacy, created DESC)")
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_stories_location_public ON stories (privacy) WHERE location IS NOT NULL AND privacy = 'public'")
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_stories_user_privacy ON stories (user_id, privacy)")
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_stories_sorting_basic ON stories (privacy, created DESC)").execute()
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_stories_location_public ON stories (privacy) WHERE location IS NOT NULL AND privacy = 'public'").execute()
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_stories_user_privacy ON stories (user_id, privacy)").execute()
 
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_journeys_sorting_basic ON journeys (privacy, is_draft, created DESC)")
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_journeys_user_privacy ON journeys (user_id, privacy, is_draft)")
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_journeys_dates ON journeys (start_date, end_date) WHERE start_date IS NOT NULL")
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_journeys_sorting_basic ON journeys (privacy, is_draft, created DESC)").execute()
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_journeys_user_privacy ON journeys (user_id, privacy, is_draft)").execute()
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_journeys_dates ON journeys (start_date, end_date) WHERE start_date IS NOT NULL").execute()
 
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_story_likes_aggregation ON story_likes (story_id)")
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_journey_likes_aggregation ON journey_likes (journey_id)")
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_story_likes_aggregation ON story_likes (story_id)").execute()
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_journey_likes_aggregation ON journey_likes (journey_id)").execute()
 
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_comments_story_aggregation ON comments (story_id) WHERE story_id IS NOT NULL")
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_comments_journey_aggregation ON comments (journey_id) WHERE journey_id IS NOT NULL")
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_comments_story_aggregation ON comments (story_id) WHERE story_id IS NOT NULL").execute()
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_comments_journey_aggregation ON comments (journey_id) WHERE journey_id IS NOT NULL").execute()
 
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_shares_story_aggregation ON shares (story_id) WHERE story_id IS NOT NULL")
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_shares_journey_aggregation ON shares (journey_id) WHERE journey_id IS NOT NULL")
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_shares_story_aggregation ON shares (story_id) WHERE story_id IS NOT NULL").execute()
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_shares_journey_aggregation ON shares (journey_id) WHERE journey_id IS NOT NULL").execute()
 
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_saves_story_aggregation ON saves (story_id) WHERE story_id IS NOT NULL")
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_saves_journey_aggregation ON saves (journey_id) WHERE journey_id IS NOT NULL")
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_saves_story_aggregation ON saves (story_id) WHERE story_id IS NOT NULL").execute()
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_saves_journey_aggregation ON saves (journey_id) WHERE journey_id IS NOT NULL").execute()
 
-    db.adapter().exec("CREATE INDEX IF NOT EXISTS idx_followers_sorting ON followers (following_id, follower_id, status)")
+    app.db().newQuery("CREATE INDEX IF NOT EXISTS idx_followers_sorting ON followers (following_id, follower_id, status)").execute()
 
     console.log("✅ Sorting indexes created successfully")
-}, (db) => {
+}, (app) => {
     console.log("Rolling back sorting indexes...")
 
     const indexesToDrop = [
@@ -47,7 +49,7 @@ migrate((db) => {
 
     indexesToDrop.forEach(name => {
         try {
-            db.adapter().exec(`DROP INDEX IF EXISTS ${name}`)
+            app.db().newQuery(`DROP INDEX IF EXISTS ${name}`).execute()
         } catch (e) {
             console.warn(`Failed to drop index ${name}:`, e)
         }
