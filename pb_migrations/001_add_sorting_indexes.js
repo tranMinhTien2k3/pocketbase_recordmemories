@@ -1,9 +1,7 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-migrate((app) => {
+migrate((db) => {  // Sử dụng db thay vì app
     console.log("Creating sorting indexes...")
-    
-    const db = app.dao().db()
     
     // Stories indexes
     db.exec(`
@@ -71,10 +69,8 @@ migrate((app) => {
     `)
     
     console.log("✅ Sorting indexes created successfully")
-}, (app) => {
+}, (db) => {  // Rollback cũng sử dụng db
     console.log("Rolling back sorting indexes...")
-    
-    const db = app.dao().db()
     
     // Rollback - xóa tất cả indexes đã tạo
     db.exec(`

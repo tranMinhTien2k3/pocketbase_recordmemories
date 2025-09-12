@@ -714,15 +714,8 @@ function clearCache(pattern = null) {
 }
 
 // =============================================================================
-// HEALTH CHECK
+// REMOVED HEALTH CHECK ROUTE TO AVOID CONFLICTS
+// Route /api/health should only be defined in ONE place
 // =============================================================================
-
-routerAdd("GET", "/api/health", (c) => {
-    return c.json(200, {
-        status: "ok",
-        timestamp: new Date().toISOString(),
-        cache_size: cache.data.size
-    })
-})
 
 console.log("🚀 Custom sorting APIs loaded successfully!")
