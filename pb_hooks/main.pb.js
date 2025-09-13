@@ -5,9 +5,14 @@
 // =============================================================================
 
 routerAdd("GET", "/api/content/sorted", (c) => {
+    console.log("Headers:", c.request().header)
+    console.log("Auth header:", c.request().header.get("authorization"))
+    
     const authRecord = c.get("authRecord")
+    console.log("AuthRecord:", authRecord)
     
     if (!authRecord) {
+        console.log("No auth record found!")
         throw new BadRequestError("Authentication required")
     }
     
@@ -73,7 +78,7 @@ routerAdd("GET", "/api/content/sorted", (c) => {
         console.error("[API ERROR]", error)
         throw new BadRequestError(`Failed to fetch sorted content: ${error.message}`)
     }
-}, $apis.requireAuth())
+}, $apis.requireRecordAuth())
 
 // =============================================================================
 // HOTSPOTS API FOR MAP
@@ -122,7 +127,7 @@ routerAdd("GET", "/api/map/hotspots", (c) => {
         console.error("[HOTSPOTS ERROR]", error)
         throw new BadRequestError(`Failed to find hotspots: ${error.message}`)
     }
-}, $apis.requireAuth())
+}, $apis.requireRecordAuth())
 
 // =============================================================================
 // CACHE MANAGEMENT API
@@ -141,7 +146,7 @@ routerAdd("POST", "/api/cache/clear", (c) => {
         message: pattern ? `Cache cleared for pattern: ${pattern}` : "All cache cleared",
         timestamp: new Date().toISOString()
     })
-    }, $apis.requireAuth())
+    }, $apis.requireRecordAuth())
 
 // =============================================================================
 // CORE FUNCTIONS
