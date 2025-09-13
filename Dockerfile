@@ -15,11 +15,18 @@ RUN unzip pocketbase.zip && chmod +x pocketbase && rm -f pocketbase.zip
 COPY pb_hooks/ /app/pb_hooks/
 COPY pb_migrations/ /app/pb_migrations/
 
-# Tạo thư mục data (sẽ được mount bằng Railway Volume)
+# Tạo thư mục data (Railway Volume sẽ mount vào đây)
 RUN mkdir -p /pb_data
 
-# Expose port (Railway sẽ đặt PORT động)
+# Expose port
 EXPOSE 8080
 
-# Auto-restore nếu chưa có DB và PB_BACKUP_URL được cung cấp, sau đó migrate rồi serve
+# Khởi tạo user và permissions cho volume
+RUN addgroup -S pocketbase && adduser -S pocketbase -G pocketbase
+RUN chown -R pocketbase:pocketbase /pb_data
+
+# Chuyển sang user non-root
+USER pocketbase
+
+# Auto-restore, migrate và serve
 CMD ["sh", "-c", "if [ ! -f /pb_data/data.db ] && [ -n \"$PB_BACKUP_URL\" ]; then echo 'No data.db found. Restoring from PB_BACKUP_URL...'; wget -O /tmp/pb_seed.zip \"$PB_BACKUP_URL\" && ./pocketbase backup restore /tmp/pb_seed.zip --dir=/pb_data || echo 'Restore failed or no backup provided.'; fi; ./pocketbase migrate up --dir=/pb_data --migrationsDir=/app/pb_migrations && ./pocketbase serve --http=0.0.0.0:${PORT:-8080} --dir=/pb_data --hooksDir=/app/pb_hooks"]

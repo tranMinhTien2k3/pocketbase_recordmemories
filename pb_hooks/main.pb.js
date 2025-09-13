@@ -73,7 +73,7 @@ routerAdd("GET", "/api/content/sorted", (c) => {
         console.error("[API ERROR]", error)
         throw new BadRequestError(`Failed to fetch sorted content: ${error.message}`)
     }
-})
+}, $apis.requireAuth())
 
 // =============================================================================
 // HOTSPOTS API FOR MAP
@@ -122,7 +122,7 @@ routerAdd("GET", "/api/map/hotspots", (c) => {
         console.error("[HOTSPOTS ERROR]", error)
         throw new BadRequestError(`Failed to find hotspots: ${error.message}`)
     }
-})
+}, $apis.requireAuth())
 
 // =============================================================================
 // CACHE MANAGEMENT API
@@ -141,7 +141,7 @@ routerAdd("POST", "/api/cache/clear", (c) => {
         message: pattern ? `Cache cleared for pattern: ${pattern}` : "All cache cleared",
         timestamp: new Date().toISOString()
     })
-})
+    }, $apis.requireAuth())
 
 // =============================================================================
 // CORE FUNCTIONS
