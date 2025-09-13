@@ -5,6 +5,18 @@
 // =============================================================================
 
 function authenticateUser(c) {
+    // Use PocketBase's built-in authentication
+    const authRecord = c.get("authRecord")
+    
+    if (!authRecord) {
+        throw new BadRequestError("Authentication required")
+    }
+    
+    return authRecord
+}
+
+// Alternative manual JWT verification (if you prefer manual approach)
+function manualAuthenticateUser(c) {
     const authHeader = c.request().header.get("Authorization")
     
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -14,14 +26,24 @@ function authenticateUser(c) {
     const token = authHeader.replace("Bearer ", "").trim()
     
     try {
-        // Thử với tên collection đúng
-        const user = $app.dao().findFirstRecordByFilter(
-            "users",  // Dùng name, không phải ID
-            "tokenKey = {:token}",
-            { token: token }
-        )
+        // Verify JWT token manually using PocketBase's method
+        const payload = $security.parseUnverifiedJWT(token)
+        
+        if (!payload || !payload.id) {
+            throw new BadRequestError("Invalid token payload")
+        }
+        
+        // Get user by ID from the correct collection
+        const user = $app.dao().findRecordById("users", payload.id)
         
         if (!user) {
+            throw new BadRequestError("User not found")
+        }
+        
+        // Verify the token is still valid by attempting to parse it properly
+        try {
+            $security.parseJWT(token, $app.settings().recordAuthToken.secret)
+        } catch (e) {
             throw new BadRequestError("Invalid or expired token")
         }
         
@@ -33,27 +55,27 @@ function authenticateUser(c) {
 }
 
 // =============================================================================
-// MAIN SORTING API WITH MANUAL AUTH
+// MAIN SORTING API WITH FIXED AUTH
 // =============================================================================
 
 routerAdd("GET", "/api/content/sorted", (c) => {
-    // Manual authentication
-    const authRecord = authenticateUser(c)
-    const userId = authRecord.id
-    
-    console.log(`[API] Authenticated user: ${userId}`)
-    
-    const sortType = c.queryParam("sort") || "newest"
-    const contentType = c.queryParam("type") || "all"
-    const lat = parseFloat(c.queryParam("lat") || "0")
-    const lng = parseFloat(c.queryParam("lng") || "0")
-    const page = parseInt(c.queryParam("page") || "1")
-    const limit = Math.min(parseInt(c.queryParam("limit") || "20"), 50)
-    const offset = (page - 1) * limit
-    
-    console.log(`[API] Sorted content request: userId=${userId}, sort=${sortType}, type=${contentType}`)
-    
     try {
+        // Use built-in authentication
+        const authRecord = authenticateUser(c)
+        const userId = authRecord.id
+        
+        console.log(`[API] Authenticated user: ${userId}`)
+        
+        const sortType = c.queryParam("sort") || "newest"
+        const contentType = c.queryParam("type") || "all"
+        const lat = parseFloat(c.queryParam("lat") || "0")
+        const lng = parseFloat(c.queryParam("lng") || "0")
+        const page = parseInt(c.queryParam("page") || "1")
+        const limit = Math.min(parseInt(c.queryParam("limit") || "20"), 50)
+        const offset = (page - 1) * limit
+        
+        console.log(`[API] Sorted content request: userId=${userId}, sort=${sortType}, type=${contentType}`)
+        
         // Check cache first
         const cacheKey = `sorted_${userId}_${sortType}_${contentType}_${lat}_${lng}_${page}_${limit}`
         const cached = getFromCache(cacheKey)
@@ -94,8 +116,8 @@ routerAdd("GET", "/api/content/sorted", (c) => {
             timestamp: new Date().toISOString(),
             user: {
                 id: authRecord.id,
-                name: authRecord.name || "",
-                email: authRecord.email || ""
+                name: authRecord.get("name") || "",
+                email: authRecord.get("email") || ""
             }
         }
         
@@ -107,31 +129,33 @@ routerAdd("GET", "/api/content/sorted", (c) => {
         
     } catch (error) {
         console.error("[API ERROR]", error)
-        throw new BadRequestError(`Failed to fetch sorted content: ${error.message}`)
+        return c.json(400, {
+            "message": `Failed to fetch sorted content: ${error.message}`,
+            "status": 400
+        })
     }
-})
+}, $app.requireRecordAuth())  // Add this middleware for automatic auth
 
 // =============================================================================
-// HOTSPOTS API FOR MAP WITH MANUAL AUTH
+// HOTSPOTS API FOR MAP WITH FIXED AUTH
 // =============================================================================
 
 routerAdd("GET", "/api/map/hotspots", (c) => {
-    // Manual authentication
-    const authRecord = authenticateUser(c)
-    const userId = authRecord.id
-    
-    const lat = parseFloat(c.queryParam("lat"))
-    const lng = parseFloat(c.queryParam("lng"))
-    const radius = parseFloat(c.queryParam("radius") || "10")
-    const minItems = parseInt(c.queryParam("min_items") || "2")
-    
-    if (!lat || !lng) {
-        throw new BadRequestError("Latitude and longitude are required")
-    }
-    
-    console.log(`[HOTSPOTS] Request: lat=${lat}, lng=${lng}, radius=${radius}km`)
-    
     try {
+        const authRecord = authenticateUser(c)
+        const userId = authRecord.id
+        
+        const lat = parseFloat(c.queryParam("lat"))
+        const lng = parseFloat(c.queryParam("lng"))
+        const radius = parseFloat(c.queryParam("radius") || "10")
+        const minItems = parseInt(c.queryParam("min_items") || "2")
+        
+        if (!lat || !lng) {
+            throw new BadRequestError("Latitude and longitude are required")
+        }
+        
+        console.log(`[HOTSPOTS] Request: lat=${lat}, lng=${lng}, radius=${radius}km`)
+        
         const cacheKey = `hotspots_${lat.toFixed(3)}_${lng.toFixed(3)}_${radius}_${minItems}`
         const cached = getFromCache(cacheKey)
         if (cached) {
@@ -154,27 +178,38 @@ routerAdd("GET", "/api/map/hotspots", (c) => {
         
     } catch (error) {
         console.error("[HOTSPOTS ERROR]", error)
-        throw new BadRequestError(`Failed to find hotspots: ${error.message}`)
+        return c.json(400, {
+            "message": `Failed to find hotspots: ${error.message}`,
+            "status": 400
+        })
     }
-})
+}, $app.requireRecordAuth())
 
 // =============================================================================
-// CACHE MANAGEMENT API WITH MANUAL AUTH
+// CACHE MANAGEMENT API WITH FIXED AUTH
 // =============================================================================
 
 routerAdd("POST", "/api/cache/clear", (c) => {
-    // Manual authentication
-    const authRecord = authenticateUser(c)
-    
-    const pattern = c.queryParam("pattern")
-    clearCache(pattern)
-    
-    return c.json(200, {
-        message: pattern ? `Cache cleared for pattern: ${pattern}` : "All cache cleared",
-        timestamp: new Date().toISOString(),
-        cleared_by: authRecord.id
-    })
-})
+    try {
+        const authRecord = authenticateUser(c)
+        
+        const pattern = c.queryParam("pattern")
+        clearCache(pattern)
+        
+        return c.json(200, {
+            message: pattern ? `Cache cleared for pattern: ${pattern}` : "All cache cleared",
+            timestamp: new Date().toISOString(),
+            cleared_by: authRecord.id
+        })
+        
+    } catch (error) {
+        console.error("[CACHE ERROR]", error)
+        return c.json(400, {
+            "message": `Failed to clear cache: ${error.message}`,
+            "status": 400
+        })
+    }
+}, $app.requireRecordAuth())
 
 // =============================================================================
 // TEST ENDPOINTS
@@ -192,24 +227,30 @@ routerAdd("GET", "/api/test", (c) => {
 
 // Auth test endpoint
 routerAdd("GET", "/api/test-auth", (c) => {
-    const authRecord = authenticateUser(c)
-    
-    return c.json(200, {
-        message: "Authentication successful",
-        user: {
-            id: authRecord.id,
-            name: authRecord.name || "",
-            email: authRecord.email || "",
-            created: authRecord.created,
-            updated: authRecord.updated
-        },
-        timestamp: new Date().toISOString()
-    })
-})
+    try {
+        const authRecord = authenticateUser(c)
+        
+        return c.json(200, {
+            message: "Authentication successful",
+            user: {
+                id: authRecord.id,
+                name: authRecord.get("name") || "",
+                email: authRecord.get("email") || "",
+                created: authRecord.get("created"),
+                updated: authRecord.get("updated")
+            },
+            timestamp: new Date().toISOString()
+        })
+    } catch (error) {
+        return c.json(401, {
+            message: "Authentication failed",
+            error: error.message
+        })
+    }
+}, $app.requireRecordAuth())
 
-// =============================================================================
-// CORE FUNCTIONS (unchanged from your original)
-// =============================================================================
+// Rest of your utility functions remain the same...
+// (getSortedStories, getSortedJourneys, enhanceStoryRecord, etc.)
 
 function getSortedStories(userId, sortType, lat, lng, limit, offset) {
     let baseQuery = `
@@ -561,7 +602,7 @@ function enhanceJourneyRecord(record) {
 }
 
 // =============================================================================
-// UTILITY FUNCTIONS (unchanged from your original)
+// UTILITY FUNCTIONS
 // =============================================================================
 
 function calculateEngagementScore(likes, comments, shares, saves, ageInHours) {
@@ -748,7 +789,7 @@ function calculateDistance(lat1, lng1, location) {
 }
 
 // =============================================================================
-// SIMPLE CACHE SYSTEM (unchanged from your original)
+// SIMPLE CACHE SYSTEM
 // =============================================================================
 
 const cache = {
@@ -792,4 +833,4 @@ function clearCache(pattern = null) {
     }
 }
 
-console.log("🚀 Custom sorting APIs with manual authentication loaded successfully!")
+console.log("🚀 Custom sorting APIs with fixed authentication loaded successfully!")
