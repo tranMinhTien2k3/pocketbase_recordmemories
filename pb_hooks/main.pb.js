@@ -1,162 +1,102 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 // =============================================================================
-// AUTHENTICATION HELPER FUNCTIONS
+// MAIN SORTING API
 // =============================================================================
-const { requireRecordAuth } = require('node:pb');
 
-function authenticateUser(c) {
-    // Use PocketBase's built-in authentication
-    const authRecord = c.get("authRecord")
+routerAdd("GET", "/api/content/sorted", (c) => {
+    try {
+        console.log(`[API] Starting sorted content request`)
+        
+        // Test database connection with a simple query
+        let items = []
+        try {
+            // Try to get some basic data from users table
+            const users = $app.dao().db()
+                .newQuery("SELECT id, name, email FROM users LIMIT 5")
+                .all()
+            
+            console.log(`[API] Found ${users.length} users`)
+            
+            // Convert to our format
+            items = users.map(user => ({
+                id: user.id,
+                title: user.name || "Unnamed User",
+                content: `User email: ${user.email}`,
+                content_type: "user",
+                created: new Date().toISOString(),
+                author: {
+                    id: user.id,
+                    name: user.name || "Unnamed",
+                    email: user.email
+                }
+            }))
+            
+        } catch (dbError) {
+            console.error("[DB ERROR]", dbError)
+            // Continue with empty items if DB fails
+        }
+        
+        const response = {
+            items: items,
+            page: 1,
+            limit: 20,
+            hasMore: false,
+            sortType: "newest",
+            contentType: "all",
+            timestamp: new Date().toISOString(),
+            message: `API is working - found ${items.length} items from database`
+        }
+        
+        console.log(`[API] Returning response with ${items.length} items`)
+        return c.json(200, response)
+        
+    } catch (error) {
+        console.error("[API ERROR]", error)
+        console.error("[API ERROR] Stack:", error.stack)
+        throw new BadRequestError(`Failed to fetch sorted content: ${error.message}`)
+    }
+})
+
+// =============================================================================
+// HOTSPOTS API FOR MAP
+// =============================================================================
+
+routerAdd("GET", "/api/map/hotspots", (c) => {
+    // Try to get auth record from context
+    let authRecord = c.get("authRecord")
+    
+    // If not found, try to manually authenticate using the token
+    if (!authRecord) {
+        const authHeader = c.req.header("Authorization")
+        if (authHeader) {
+            try {
+                // Remove Bearer prefix if present
+                const token = authHeader.replace(/^Bearer\s+/i, "")
+                authRecord = $app.authStore.loadFromToken(token)
+            } catch (e) {
+                console.log("Token parsing error:", e)
+            }
+        }
+    }
     
     if (!authRecord) {
         throw new BadRequestError("Authentication required")
     }
     
-    return authRecord
-}
-
-// Alternative manual JWT verification (if you prefer manual approach)
-function manualAuthenticateUser(c) {
-    const authHeader = c.request().header.get("Authorization")
+    const userId = authRecord.id
+    const lat = parseFloat(c.queryParam("lat"))
+    const lng = parseFloat(c.queryParam("lng"))
+    const radius = parseFloat(c.queryParam("radius") || "10")
+    const minItems = parseInt(c.queryParam("min_items") || "2")
     
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        throw new BadRequestError("Invalid authorization format")
+    if (!lat || !lng) {
+        throw new BadRequestError("Latitude and longitude are required")
     }
     
-    const token = authHeader.replace("Bearer ", "").trim()
+    console.log(`[HOTSPOTS] Request: lat=${lat}, lng=${lng}, radius=${radius}km`)
     
     try {
-        // Verify JWT token manually using PocketBase's method
-        const payload = $security.parseUnverifiedJWT(token)
-        
-        if (!payload || !payload.id) {
-            throw new BadRequestError("Invalid token payload")
-        }
-        
-        // Get user by ID from the correct collection
-        const user = $app.dao().findRecordById("users", payload.id)
-        
-        if (!user) {
-            throw new BadRequestError("User not found")
-        }
-        
-        // Verify the token is still valid by attempting to parse it properly
-        try {
-            $security.parseJWT(token, $app.settings().recordAuthToken.secret)
-        } catch (e) {
-            throw new BadRequestError("Invalid or expired token")
-        }
-        
-        return user
-    } catch (error) {
-        console.error("Authentication error:", error)
-        throw new BadRequestError("Authentication failed")
-    }
-}
-
-// =============================================================================
-// MAIN SORTING API WITH FIXED AUTH
-// =============================================================================
-
-routerAdd("GET", "/api/content/sorted", (c) => {
-    try {
-        // Use built-in authentication
-        const authRecord = authenticateUser(c)
-        const userId = authRecord.id
-        
-        console.log(`[API] Authenticated user: ${userId}`)
-        
-        const sortType = c.queryParam("sort") || "newest"
-        const contentType = c.queryParam("type") || "all"
-        const lat = parseFloat(c.queryParam("lat") || "0")
-        const lng = parseFloat(c.queryParam("lng") || "0")
-        const page = parseInt(c.queryParam("page") || "1")
-        const limit = Math.min(parseInt(c.queryParam("limit") || "20"), 50)
-        const offset = (page - 1) * limit
-        
-        console.log(`[API] Sorted content request: userId=${userId}, sort=${sortType}, type=${contentType}`)
-        
-        // Check cache first
-        const cacheKey = `sorted_${userId}_${sortType}_${contentType}_${lat}_${lng}_${page}_${limit}`
-        const cached = getFromCache(cacheKey)
-        if (cached) {
-            console.log(`[CACHE] Hit for key: ${cacheKey}`)
-            return c.json(200, cached)
-        }
-        
-        let results = []
-        
-        if (contentType === "stories" || contentType === "all") {
-            const stories = getSortedStories(userId, sortType, lat, lng, limit, offset)
-            results = results.concat(stories.map(story => ({
-                ...story,
-                content_type: "story"
-            })))
-        }
-        
-        if (contentType === "journeys" || contentType === "all") {
-            const journeys = getSortedJourneys(userId, sortType, lat, lng, limit, offset)
-            results = results.concat(journeys.map(journey => ({
-                ...journey,
-                content_type: "journey"
-            })))
-        }
-        
-        if (contentType === "all") {
-            results = sortMixedContent(results, sortType, lat, lng)
-            results = results.slice(0, limit)
-        }
-        
-        const response = {
-            items: results,
-            page: page,
-            limit: limit,
-            hasMore: results.length === limit,
-            sortType: sortType,
-            timestamp: new Date().toISOString(),
-            user: {
-                id: authRecord.id,
-                name: authRecord.get("name") || "",
-                email: authRecord.get("email") || ""
-            }
-        }
-        
-        // Cache for 3 minutes
-        setToCache(cacheKey, response, 3)
-        
-        console.log(`[API] Returning ${results.length} items`)
-        return c.json(200, response)
-        
-    } catch (error) {
-        console.error("[API ERROR]", error)
-        return c.json(400, {
-            "message": `Failed to fetch sorted content: ${error.message}`,
-            "status": 400
-        })
-    }
-},requireRecordAuth)  // Add this middleware for automatic auth
-
-// =============================================================================
-// HOTSPOTS API FOR MAP WITH FIXED AUTH
-// =============================================================================
-
-routerAdd("GET", "/api/map/hotspots", (c) => {
-    try {
-        const authRecord = authenticateUser(c)
-        const userId = authRecord.id
-        
-        const lat = parseFloat(c.queryParam("lat"))
-        const lng = parseFloat(c.queryParam("lng"))
-        const radius = parseFloat(c.queryParam("radius") || "10")
-        const minItems = parseInt(c.queryParam("min_items") || "2")
-        
-        if (!lat || !lng) {
-            throw new BadRequestError("Latitude and longitude are required")
-        }
-        
-        console.log(`[HOTSPOTS] Request: lat=${lat}, lng=${lng}, radius=${radius}km`)
-        
         const cacheKey = `hotspots_${lat.toFixed(3)}_${lng.toFixed(3)}_${radius}_${minItems}`
         const cached = getFromCache(cacheKey)
         if (cached) {
@@ -179,79 +119,13 @@ routerAdd("GET", "/api/map/hotspots", (c) => {
         
     } catch (error) {
         console.error("[HOTSPOTS ERROR]", error)
-        return c.json(400, {
-            "message": `Failed to find hotspots: ${error.message}`,
-            "status": 400
-        })
+        throw new BadRequestError(`Failed to find hotspots: ${error.message}`)
     }
-}, requireRecordAuth)
-
-// =============================================================================
-// CACHE MANAGEMENT API WITH FIXED AUTH
-// =============================================================================
-
-routerAdd("POST", "/api/cache/clear", (c) => {
-    try {
-        const authRecord = authenticateUser(c)
-        
-        const pattern = c.queryParam("pattern")
-        clearCache(pattern)
-        
-        return c.json(200, {
-            message: pattern ? `Cache cleared for pattern: ${pattern}` : "All cache cleared",
-            timestamp: new Date().toISOString(),
-            cleared_by: authRecord.id
-        })
-        
-    } catch (error) {
-        console.error("[CACHE ERROR]", error)
-        return c.json(400, {
-            "message": `Failed to clear cache: ${error.message}`,
-            "status": 400
-        })
-    }
-}, requireRecordAuth)
-
-// =============================================================================
-// TEST ENDPOINTS
-// =============================================================================
-
-// Public test endpoint (no auth required)
-routerAdd("GET", "/api/test", (c) => {
-    return c.json(200, {
-        message: "API is working",
-        timestamp: new Date().toISOString(),
-        server_time: new Date().toLocaleString(),
-        collections: $app.dao().findCollectionsByType("auth").map(col => col.name)
-    })
 })
 
-// Auth test endpoint
-routerAdd("GET", "/api/test-auth", (c) => {
-    try {
-        const authRecord = authenticateUser(c)
-        
-        return c.json(200, {
-            message: "Authentication successful",
-            user: {
-                id: authRecord.id,
-                name: authRecord.get("name") || "",
-                email: authRecord.get("email") || "",
-                created: authRecord.get("created"),
-                updated: authRecord.get("updated")
-            },
-            timestamp: new Date().toISOString()
-        })
-    } catch (error) {
-        return c.json(401, {
-            message: "Authentication failed",
-            error: error.message
-        })
-    }
-},requireRecordAuth)
-
-// Rest of your utility functions remain the same...
-// (getSortedStories, getSortedJourneys, enhanceStoryRecord, etc.)
+// =============================================================================
+// CORE FUNCTIONS
+// =============================================================================
 
 function getSortedStories(userId, sortType, lat, lng, limit, offset) {
     let baseQuery = `
@@ -369,19 +243,14 @@ function getSortedStories(userId, sortType, lat, lng, limit, offset) {
     }
     
     baseQuery += ` LIMIT ? OFFSET ?`
-    params.push(limit + 5, offset)
+    params.push(limit + 5, offset) // Lấy thêm một chút để tránh thiếu
     
-    try {
-        const records = $app.dao().db()
-            .newQuery(baseQuery)
-            .bind(...params)
-            .all()
-        
-        return records.map(record => enhanceStoryRecord(record))
-    } catch (error) {
-        console.error("Error in getSortedStories:", error)
-        return []
-    }
+    const records = $app.dao().db()
+        .newQuery(baseQuery)
+        .bind(...params)
+        .all()
+    
+    return records.map(record => enhanceStoryRecord(record))
 }
 
 function getSortedJourneys(userId, sortType, lat, lng, limit, offset) {
@@ -475,17 +344,12 @@ function getSortedJourneys(userId, sortType, lat, lng, limit, offset) {
     baseQuery += ` LIMIT ? OFFSET ?`
     params.push(limit + 5, offset)
     
-    try {
-        const records = $app.dao().db()
-            .newQuery(baseQuery)
-            .bind(...params)
-            .all()
-        
-        return records.map(record => enhanceJourneyRecord(record))
-    } catch (error) {
-        console.error("Error in getSortedJourneys:", error)
-        return []
-    }
+    const records = $app.dao().db()
+        .newQuery(baseQuery)
+        .bind(...params)
+        .all()
+    
+    return records.map(record => enhanceJourneyRecord(record))
 }
 
 function enhanceStoryRecord(record) {
@@ -495,13 +359,11 @@ function enhanceStoryRecord(record) {
     let media = null
     let location = null
     let tags = null
-    let audioFiles = null
     
     try {
         if (record.media) media = JSON.parse(record.media)
         if (record.location) location = JSON.parse(record.location)
         if (record.tags) tags = JSON.parse(record.tags)
-        if (record.audio_files) audioFiles = JSON.parse(record.audio_files)
     } catch (e) {
         console.warn("JSON parse error:", e)
     }
@@ -519,7 +381,7 @@ function enhanceStoryRecord(record) {
         title: record.title,
         content: record.content,
         media: media,
-        audio_files: audioFiles,
+        audio_files: record.audio_files ? JSON.parse(record.audio_files) : null,
         location: location,
         tags: tags,
         privacy: record.privacy,
@@ -686,44 +548,39 @@ function findHotSpots(userId, centerLat, centerLng, radius, minItems) {
             AND json_extract(j.timeline_items, '$[0].location.longitude') IS NOT NULL
     `
     
-    try {
-        const allContent = $app.dao().db()
-            .newQuery(query)
-            .all()
-            .filter(item => {
-                if (!item.lat || !item.lng) return false
-                const distance = calculateDistance(centerLat, centerLng, {
-                    latitude: item.lat,
-                    longitude: item.lng
-                })
-                return distance <= radius
+    const allContent = $app.dao().db()
+        .newQuery(query)
+        .all()
+        .filter(item => {
+            if (!item.lat || !item.lng) return false
+            const distance = calculateDistance(centerLat, centerLng, {
+                latitude: item.lat,
+                longitude: item.lng
             })
-        
-        const clusters = clusterByLocation(allContent, 0.8) // 800m clusters
-        
-        return clusters
-            .filter(cluster => cluster.items.length >= minItems)
-            .map(cluster => {
-                const totalEngagement = cluster.items.reduce((sum, item) => sum + (item.engagement || 0), 0)
-                const avgAge = cluster.items.reduce((sum, item) => {
-                    const age = (Date.now() - new Date(item.created).getTime()) / (1000 * 60 * 60)
-                    return sum + age
-                }, 0) / cluster.items.length
-                
-                return {
-                    center: cluster.center,
-                    item_count: cluster.items.length,
-                    total_engagement: totalEngagement,
-                    sample_items: cluster.items.slice(0, 3),
-                    hotness_score: (cluster.items.length * 2 + totalEngagement) * Math.exp(-avgAge / 48)
-                }
-            })
-            .sort((a, b) => b.hotness_score - a.hotness_score)
-            .slice(0, 20) // Top 20 hotspots
-    } catch (error) {
-        console.error("Error in findHotSpots:", error)
-        return []
-    }
+            return distance <= radius
+        })
+    
+    const clusters = clusterByLocation(allContent, 0.8) // 800m clusters
+    
+    return clusters
+        .filter(cluster => cluster.items.length >= minItems)
+        .map(cluster => {
+            const totalEngagement = cluster.items.reduce((sum, item) => sum + (item.engagement || 0), 0)
+            const avgAge = cluster.items.reduce((sum, item) => {
+                const age = (Date.now() - new Date(item.created).getTime()) / (1000 * 60 * 60)
+                return sum + age
+            }, 0) / cluster.items.length
+            
+            return {
+                center: cluster.center,
+                item_count: cluster.items.length,
+                total_engagement: totalEngagement,
+                sample_items: cluster.items.slice(0, 3),
+                hotness_score: (cluster.items.length * 2 + totalEngagement) * Math.exp(-avgAge / 48)
+            }
+        })
+        .sort((a, b) => b.hotness_score - a.hotness_score)
+        .slice(0, 20) // Top 20 hotspots
 }
 
 function clusterByLocation(items, radiusKm) {
@@ -834,4 +691,80 @@ function clearCache(pattern = null) {
     }
 }
 
-console.log("🚀 Custom sorting APIs with fixed authentication loaded successfully!")
+// =============================================================================
+// CACHE INVALIDATION HOOKS
+// =============================================================================
+
+onRecordCreateRequest("story_likes", (e) => {
+    clearCache("sorted_")
+    clearCache("hotspots_")
+})
+
+onRecordCreateRequest("journey_likes", (e) => {
+    clearCache("sorted_")
+    clearCache("hotspots_")
+})
+
+onRecordCreateRequest("comments", (e) => {
+    clearCache("sorted_")
+    clearCache("hotspots_")
+})
+
+onRecordCreateRequest("shares", (e) => {
+    clearCache("sorted_")
+    clearCache("hotspots_")
+})
+
+onRecordCreateRequest("saves", (e) => {
+    clearCache("sorted_")
+    clearCache("hotspots_")
+})
+
+onRecordDeleteRequest("story_likes", (e) => {
+    clearCache("sorted_")
+    clearCache("hotspots_")
+})
+
+onRecordDeleteRequest("journey_likes", (e) => {
+    clearCache("sorted_")
+    clearCache("hotspots_")
+})
+
+onRecordDeleteRequest("comments", (e) => {
+    clearCache("sorted_")
+    clearCache("hotspots_")
+})
+
+onRecordDeleteRequest("shares", (e) => {
+    clearCache("sorted_")
+    clearCache("hotspots_")
+})
+
+onRecordDeleteRequest("saves", (e) => {
+    clearCache("sorted_")
+    clearCache("hotspots_")
+})
+
+onRecordUpdateRequest("stories", (e) => {
+    clearCache("sorted_")
+    clearCache("hotspots_")
+})
+
+onRecordUpdateRequest("journeys", (e) => {
+    clearCache("sorted_")
+    clearCache("hotspots_")
+})
+
+// =============================================================================
+// HEALTH CHECK
+// =============================================================================
+
+routerAdd("GET", "/api/custom/health", (c) => {
+    return c.json(200, {
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        cache_size: cache.data.size
+    })
+})
+
+console.log("🚀 Custom sorting APIs loaded successfully!")
