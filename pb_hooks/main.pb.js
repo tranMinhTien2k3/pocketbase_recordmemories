@@ -134,7 +134,7 @@ routerAdd("GET", "/api/content/sorted", (c) => {
             "status": 400
         })
     }
-}, $app.requireRecordAuth())  // Add this middleware for automatic auth
+},requireRecordAuth)  // Add this middleware for automatic auth
 
 // =============================================================================
 // HOTSPOTS API FOR MAP WITH FIXED AUTH
@@ -183,7 +183,7 @@ routerAdd("GET", "/api/map/hotspots", (c) => {
             "status": 400
         })
     }
-}, $app.requireRecordAuth())
+}, requireRecordAuth)
 
 // =============================================================================
 // CACHE MANAGEMENT API WITH FIXED AUTH
@@ -209,7 +209,7 @@ routerAdd("POST", "/api/cache/clear", (c) => {
             "status": 400
         })
     }
-}, $app.requireRecordAuth())
+}, requireRecordAuth)
 
 // =============================================================================
 // TEST ENDPOINTS
@@ -247,7 +247,7 @@ routerAdd("GET", "/api/test-auth", (c) => {
             error: error.message
         })
     }
-}, $app.requireRecordAuth())
+},requireRecordAuth)
 
 // Rest of your utility functions remain the same...
 // (getSortedStories, getSortedJourneys, enhanceStoryRecord, etc.)
