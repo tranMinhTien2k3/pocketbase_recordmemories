@@ -3,6 +3,7 @@
 // =============================================================================
 // AUTHENTICATION HELPER FUNCTIONS
 // =============================================================================
+const { requireRecordAuth } = require('node:pb');
 
 function authenticateUser(c) {
     // Use PocketBase's built-in authentication
