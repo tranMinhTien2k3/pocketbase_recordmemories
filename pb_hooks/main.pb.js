@@ -7,24 +7,16 @@
 function authenticateUser(c) {
     const authHeader = c.request().header.get("Authorization")
     
-    if (!authHeader) {
-        throw new BadRequestError("Authorization header is required")
-    }
-    
-    if (!authHeader.startsWith("Bearer ")) {
-        throw new BadRequestError("Invalid authorization format. Use 'Bearer <token>'")
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        throw new BadRequestError("Invalid authorization format")
     }
     
     const token = authHeader.replace("Bearer ", "").trim()
     
-    if (!token) {
-        throw new BadRequestError("Token is required")
-    }
-    
     try {
-        // Method 1: Try to find user by tokenKey (recommended)
+        // Thử với tên collection đúng
         const user = $app.dao().findFirstRecordByFilter(
-            "users",  // Your actual collection name
+            "users",  // Dùng name, không phải ID
             "tokenKey = {:token}",
             { token: token }
         )
